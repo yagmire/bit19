@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>BIT19</title>
+  <link rel="STYLESHEET" type="text/css" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div>
+        <h1>BIT19</h1>
+        <div class="help">Click or drag to paint. Export as an array.</div>
+      </div>
+      <div style="margin-left:auto" class="panel">
+        <div class="controls row">
+          <label>Rows <input id="rows" type="number" min="1" value="19"></label>
+          <label>Cols <input id="cols" type="number" min="1" value="19"></label>
+          <label>Pixel size <input id="pxSize" type="number" min="4" value="18"></label>
+          <button id="resizeBtn" class="small">Resize</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <div class="left panel">
+        <div class="row" style="align-items:center;margin-bottom:10px">
+          <div class="tools">
+            <button id="paintBtn" class="small">Paint</button>
+            <button id="eraseBtn" class="small secondary">Erase</button>
+            <button id="fillBtn" class="small secondary">Fill</button>
+            <button id="invertBtn" class="small secondary">Invert</button>
+            <button id="clearBtn" class="small secondary">Clear</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:12px;align-items:center">
+          <div class="preview" id="previewWrap">
+            <canvas id="bitmapCanvas" width="234" height="234"></canvas>
+          </div>
+          <div>
+            <div class="row"><label>Active value: <select id="valueSelect"><option value="1">1 (filled)</option><option value="0">0 (empty)</option></select></label></div>
+            <div class="row" style="margin-top:8px"><button id="exportBtn">Export array</button><button id="copyBtn" class="secondary">Copy</button></div>
+          </div>
+        </div>
+
+        <div style="margin-top:12px">
+          <label>Load JS array (paste exactly as variable or array literal)</label>
+          <textarea id="loadArea" placeholder="Paste or type e.g. const bitmap = [...];"></textarea>
+          <div class="row" style="margin-top:8px"><button id="loadBtn" class="small">Load</button><button id="downloadBtn" class="small secondary">Download JSON</button></div>
+        </div>
+      </div>
+
+      <div class="right panel">
+        <label>Exported JS array</label>
+        <textarea id="exportArea" readonly></textarea>
+        <div class="footer">Example format produced:
+          <code style="display:block;margin-top:6px;font-family:monospace;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px">const myBitmap = [ [0,0,1,...], ... ];</code>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
