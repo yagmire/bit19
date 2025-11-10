@@ -32,11 +32,38 @@ const fillBtn = document.getElementById('fillBtn');
 const invertBtn = document.getElementById('invertBtn');
 const clearBtn = document.getElementById('clearBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+const jsonFileInput = document.getElementById('jsonFile');
+const paletteWrap = document.getElementById('paletteEditor');
 
+const palette = {
+  0: '#ffffff',
+  1: '#000000',
+  2: '#ff4444',
+  3: '#ff8800',
+  4: '#ffee33',
+  5: '#44ff44',
+  6: '#44ddff',
+  7: '#4488ff',
+  8: '#9955ff',
+  9: '#ff55dd'
+};
 let drawing = false;
 let tool = 'paint'; 
 
 let bitmap = [];
+
+valueSelect.innerHTML = Object.keys(palette)
+  .map(k => `<option value="${k}">${k} — ${palette[k]}</option>`)
+  .join('');
+
+valueSelect.value = '1';
+
+paletteWrap.addEventListener('click',e=>{
+  const sw = e.target.closest('[data-v]');
+  if(!sw) return;
+  valueSelect.value = sw.dataset.v;
+});
+
 
 function createEmpty(r,c){
   const arr = new Array(r).fill(0).map(()=>new Array(c).fill(0));
@@ -72,17 +99,15 @@ function render(){
   for(let y=0;y<r;y++){
     for(let x=0;x<c;x++){
       const v = bitmap[y][x];
-      if(v){
-        ctx.fillStyle = '#08304a';
-        ctx.fillRect(x*px,y*px,px,px);
-        ctx.fillStyle = '#66d5ff';
-        ctx.fillRect(x*px+Math.max(1,px*0.12), y*px+Math.max(1,px*0.12), px-Math.max(2,px*0.24), px-Math.max(2,px*0.24));
-      } else {
-        ctx.fillStyle = 'rgba(255,255,255,0.03)';
-        ctx.fillRect(x*px,y*px,px,px);
-      }
+  
+      // pick color
+      const color = palette[v] ?? '#ffffff';
+  
+      ctx.fillStyle = color;
+      ctx.fillRect(x*px, y*px, px, px);
     }
   }
+  
   ctx.strokeStyle = 'rgba(255,255,255,0.04)';
   ctx.lineWidth = 1;
   for(let i=0;i<=c;i++){
@@ -125,6 +150,25 @@ function paintAt(r,c,val){
   bitmap[r][c] = val;
   render();
 }
+
+jsonFileInput.addEventListener('change', async (ev)=>{
+  const f = ev.target.files?.[0];
+  if(!f) return;
+
+  const txt = await f.text();
+  try {
+    const obj = JSON.parse(txt);
+
+    if(!obj.bitmap || !Array.isArray(obj.bitmap))
+      throw new Error('json missing bitmap array');
+
+    setBitmapFrom(obj.bitmap);
+
+  } catch(err){
+    alert('json parse failed: ' + err.message);
+  }
+});
+
 
 function floodFill(sr,sc,newVal){
   const rows = bitmap.length, cols = bitmap[0].length;

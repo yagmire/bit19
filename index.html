@@ -41,6 +41,7 @@
           </div>
           <div>
             <div class="row"><label>Active value: <select id="valueSelect"><option value="1">1 (filled)</option><option value="0">0 (empty)</option></select></label></div>
+            <div id="paletteEditor" style="display:flex;gap:6px;margin-top:12px"></div>
             <div class="row" style="margin-top:8px"><button id="exportBtn">Export array</button><button id="copyBtn" class="secondary">Copy</button></div>
           </div>
         </div>
@@ -48,6 +49,7 @@
         <div style="margin-top:12px">
           <label>Load JS array (paste exactly as variable or array literal)</label>
           <textarea id="loadArea" placeholder="Paste or type e.g. const bitmap = [...];"></textarea>
+          <input id="jsonFile" type="file" accept=".json">
           <div class="row" style="margin-top:8px"><button id="loadBtn" class="small">Load</button><button id="downloadBtn" class="small secondary">Download JSON</button></div>
         </div>
       </div>
