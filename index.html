@@ -40,17 +40,19 @@
             <canvas id="bitmapCanvas" width="234" height="234"></canvas>
           </div>
           <div>
-            <div class="row"><label>Active value: <select id="valueSelect"><option value="1">1 (filled)</option><option value="0">0 (empty)</option></select></label></div>
-            <div id="paletteEditor" style="display:flex;gap:6px;margin-top:12px"></div>
-            <div class="row" style="margin-top:8px"><button id="exportBtn">Export array</button><button id="copyBtn" class="secondary">Copy</button></div>
+            <div class="row" style="align-items:center;gap:8px">
+              <label>Active color:</label>
+              <div id="paletteEditor" class="palette" style="display:flex;gap:6px"></div>
+            </div>
           </div>
         </div>
 
         <div style="margin-top:12px">
           <label>Load JS array (paste exactly as variable or array literal)</label>
           <textarea id="loadArea" placeholder="Paste or type e.g. const bitmap = [...];"></textarea>
-          <input id="jsonFile" type="file" accept=".json">
-          <div class="row" style="margin-top:8px"><button id="loadBtn" class="small">Load</button><button id="downloadBtn" class="small secondary">Download JSON</button></div>
+          <div class="row" style="margin-top:8px"><button id="loadBtn" class="small">Load</button></div>
+          <br>or load from file: <input id="jsonFile" type="file" accept=".json"><br><br>
+          <button id="downloadBtn" class="">Download Project</button><button style="margin-left: 8px;" class="secondary" id="exportBtn">Export as array</button><button id="copyBtn" style="margin-left: 8px;" class="secondary">Copy to clipboard</button>
         </div>
       </div>
 
@@ -58,7 +60,7 @@
         <label>Exported JS array</label>
         <textarea id="exportArea" readonly></textarea>
         <div class="footer">Example format produced:
-          <code style="display:block;margin-top:6px;font-family:monospace;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px">const myBitmap = [ [0,0,1,...], ... ];</code>
+          <code style="display:block;margin-top:6px;font-family:monospace;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px">[ [0,0,1,...], ... ];</code>
         </div>
       </div>
     </div>
