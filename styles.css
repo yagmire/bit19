@@ -1,22 +1,35 @@
-:root{--ui-bg:#0f172a;--panel:#0b1220;--accent:#7dd3fc;--muted:#9aa7bf}
-html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e6eef8;background:linear-gradient(180deg,#071029 0%, #081525 100%)}
-.app{max-width:1100px;margin:28px auto;padding:20px;border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,0.02),transparent);box-shadow:0 6px 30px rgba(2,6,23,0.6)}
-h1{margin:0 0 10px;font-size:20px}
-.top{display:flex;gap:16px;align-items:center}
-.panel{background:rgba(255,255,255,0.02);padding:12px;border-radius:10px}
-.controls{display:flex;gap:10px;flex-wrap:wrap}
-label{font-size:13px;color:var(--muted)}
-input[type=number]{width:72px;padding:6px;border-radius:6px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit}
-button{background:var(--accent);border:none;padding:8px 10px;border-radius:8px;color:#02243a;cursor:pointer}
-button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
-.layout{display:flex;gap:18px;margin-top:16px}
-.left{flex:0 0 auto}
-.right{flex:1;min-width:320px}
-canvas{image-rendering:pixelated;border:1px solid rgba(255,255,255,0.04);background:#fff;}
-.preview{display:inline-block;padding:8px;background:rgba(0,0,0,0.35);border-radius:8px}
-textarea{width:100%;height:160px;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;color:inherit;font-family:monospace}
-.row{display:flex;gap:8px;align-items:center}
-.help{font-size:13px;color:var(--muted);margin-top:8px}
-.tools{display:flex;gap:8px}
-.small{padding:6px 8px;font-size:13px}
-.footer{font-size:13px;color:var(--muted);margin-top:10px}
+:root{--accent:#7dd3fc;--muted:#9aa3ad;--bg:#262626;--bar:#323232;--card:#3a3a3a;--line:#1a1a1a;--hi:#4a4a4a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font:13px Inter,system-ui,Segoe UI,Roboto,Arial;color:#e4e4e4;background:var(--bg)}
+.app{display:flex;flex-direction:column;height:100%}
+.i{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+button{display:inline-flex;align-items:center;gap:6px;background:var(--accent);border:none;padding:6px 10px;border-radius:4px;color:#02243a;cursor:pointer;font:inherit}
+button.secondary{background:var(--hi);color:#d8d8d8}
+button.secondary:hover{background:#585858}
+button:disabled{opacity:.35;cursor:default}
+.small{padding:5px 9px}
+.menubar{display:flex;align-items:center;gap:4px;padding:4px 8px;background:var(--bar);border-bottom:1px solid var(--line)}
+.logo{font-weight:700;letter-spacing:.08em;color:var(--accent);margin-right:4px}
+.sep{width:1px;height:20px;background:#555;margin:0 6px}
+.mb{background:transparent;color:#ddd;padding:5px 8px}
+.mb:hover:not(:disabled){background:var(--hi)}
+.workspace{flex:1;display:flex;min-height:0}
+.toolbar{width:46px;padding:6px;background:var(--bar);border-right:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.toolbar hr{width:100%;border:0;border-top:1px solid #555;margin:4px 0}
+.tool{width:32px;height:32px;justify-content:center;padding:0}
+.stage{flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:#1e1e1e}
+.preview{padding:0;line-height:0;box-shadow:0 0 0 1px #000,0 8px 30px rgba(0,0,0,.6)}
+canvas{image-rendering:pixelated;background:#fff;display:block;cursor:crosshair}
+.side{width:260px;overflow:auto;padding:8px;background:var(--bar);border-left:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.card{background:var(--card);border-radius:6px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.card h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.palette{display:flex;flex-wrap:wrap;gap:5px}
+.grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px}
+input[type=number]{width:100%;padding:5px;border-radius:4px;border:1px solid var(--line);background:#2a2a2a;color:inherit}
+textarea{width:100%;height:90px;padding:8px;border-radius:4px;border:1px solid var(--line);background:#2a2a2a;color:inherit;font:12px monospace;resize:vertical}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.statusbar{display:flex;gap:18px;padding:4px 10px;background:var(--bar);border-top:1px solid var(--line);color:var(--muted);font-size:12px}
+.statusbar b{color:#e4e4e4;font-weight:600}
+@media(max-width:760px){.workspace{flex-wrap:wrap}.side{width:100%;order:3}.stage{min-height:300px}}

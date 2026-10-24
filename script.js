@@ -19,6 +19,9 @@ const clearBtn = document.getElementById('clearBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const jsonFileInput = document.getElementById('jsonFile');
 const paletteWrap = document.getElementById('paletteEditor');
+const selectBtn = document.getElementById('selectBtn');
+const undoBtn = document.getElementById('undoBtn');
+const redoBtn = document.getElementById('redoBtn');
 
 const palette = {
   0: '#ffffff',
@@ -38,6 +41,52 @@ let drawing = false;
 let tool = 'paint';
 let bitmap = [];
 let activeValue = 1;
+
+// --- Selection state ---
+let selection = null;   // {x, y, w, h}
+let floating = null;    // pixels being dragged (2D array)
+let dragMode = null;    // 'select' | 'move' | null
+let moveStart = null, moveOrigin = null;
+let selAnchor = null;
+
+// --- Undo / redo ---
+const undoStack = [], redoStack = [];
+const MAX_HISTORY = 100;
+let strokeSaved = false;
+
+function snapshot() { return bitmap.map(r => r.slice()); }
+function updateHistoryButtons() {
+  undoBtn.disabled = !undoStack.length;
+  redoBtn.disabled = !redoStack.length;
+}
+function pushHistory() {
+  undoStack.push(snapshot());
+  if (undoStack.length > MAX_HISTORY) undoStack.shift();
+  redoStack.length = 0;
+  updateHistoryButtons();
+}
+function beginChange() {            // one history entry per stroke
+  if (!strokeSaved) { pushHistory(); strokeSaved = true; }
+}
+function restore(snap) {
+  bitmap = snap.map(r => r.slice());
+  selection = null; floating = null;
+  rowsInput.value = bitmap.length;
+  colsInput.value = bitmap[0].length;
+  updateCanvasSize();
+  render();
+  updateHistoryButtons();
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(snapshot());
+  restore(undoStack.pop());
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(snapshot());
+  restore(redoStack.pop());
+}
 
 // --- Render color palette ---
 function renderPalette() {
@@ -67,6 +116,8 @@ function createEmpty(r, c) {
 function setBitmapFrom(initial) {
   const r = initial.length;
   const c = initial[0].length;
+  if (bitmap.length) pushHistory();
+  selection = null;
   bitmap = initial.map(row => row.slice());
   rowsInput.value = r;
   colsInput.value = c;
@@ -76,16 +127,44 @@ function setBitmapFrom(initial) {
 }
 
 function updateCanvasSize() {
-  const r = Number(rowsInput.value);
-  const c = Number(colsInput.value);
+  const r = bitmap.length || Number(rowsInput.value);
+  const c = bitmap.length ? bitmap[0].length : Number(colsInput.value);
   const px = Number(pxSizeInput.value);
   canvas.width = c * px;
   canvas.height = r * px;
   canvas.style.width = canvas.width + 'px';
   canvas.style.height = canvas.height + 'px';
+  updateStatus();
 }
 
 function render() {
+  drawBase();
+  drawOverlay();
+}
+
+function drawOverlay() {
+  const px = Number(pxSizeInput.value);
+  if (floating && selection) {
+    for (let j = 0; j < floating.length; j++) {
+      for (let i = 0; i < floating[0].length; i++) {
+        ctx.fillStyle = palette[floating[j][i]] ?? '#ffffff';
+        ctx.fillRect((selection.x + i) * px, (selection.y + j) * px, px, px);
+      }
+    }
+  }
+  if (selection) {
+    const x = selection.x * px + 1, y = selection.y * px + 1;
+    const w = selection.w * px - 2, h = selection.h * px - 2;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = '#000'; ctx.strokeRect(x, y, w, h);
+    ctx.lineDashOffset = 5;
+    ctx.strokeStyle = '#fff'; ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]); ctx.lineDashOffset = 0;
+  }
+}
+
+function drawBase() {
   const r = bitmap.length;
   const c = bitmap[0].length;
   const px = Number(pxSizeInput.value);
@@ -126,8 +205,56 @@ function posToCell(ev) {
   return { x, y };
 }
 
+function cellClamped(ev) {
+  const rect = canvas.getBoundingClientRect();
+  const px = Number(pxSizeInput.value);
+  const x = Math.floor((ev.clientX - rect.left) / px);
+  const y = Math.floor((ev.clientY - rect.top) / px);
+  return {
+    x: Math.max(0, Math.min(bitmap[0].length - 1, x)),
+    y: Math.max(0, Math.min(bitmap.length - 1, y))
+  };
+}
+
+function inSelection(c) {
+  return selection && c.x >= selection.x && c.x < selection.x + selection.w &&
+         c.y >= selection.y && c.y < selection.y + selection.h;
+}
+
+function liftSelection() {
+  floating = [];
+  for (let j = 0; j < selection.h; j++) {
+    floating.push(bitmap[selection.y + j].slice(selection.x, selection.x + selection.w));
+    for (let i = 0; i < selection.w; i++) bitmap[selection.y + j][selection.x + i] = 0;
+  }
+}
+
+function dropFloating() {
+  for (let j = 0; j < floating.length; j++) {
+    for (let i = 0; i < floating[0].length; i++) {
+      bitmap[selection.y + j][selection.x + i] = floating[j][i];
+    }
+  }
+  floating = null;
+}
+
 canvas.addEventListener('mousedown', e => {
   drawing = true;
+  strokeSaved = false;
+  if (tool === 'select') {
+    const c = cellClamped(e);
+    if (inSelection(c)) {
+      dragMode = 'move';
+      moveStart = c;
+      moveOrigin = { x: selection.x, y: selection.y };
+    } else {
+      dragMode = 'select';
+      selAnchor = c;
+      selection = { x: c.x, y: c.y, w: 1, h: 1 };
+    }
+    render();
+    return;
+  }
   const cell = posToCell(e);
   if (!cell) return;
   if (tool === 'fill') {
@@ -136,16 +263,42 @@ canvas.addEventListener('mousedown', e => {
     paintAt(cell.y, cell.x, tool === 'paint' ? activeValue : 0);
   }
 });
-window.addEventListener('mouseup', () => { drawing = false; });
+
 canvas.addEventListener('mousemove', e => {
   if (!drawing) return;
+  if (tool === 'select') {
+    const c = cellClamped(e);
+    if (dragMode === 'select') {
+      const x0 = Math.min(selAnchor.x, c.x), y0 = Math.min(selAnchor.y, c.y);
+      selection = { x: x0, y: y0, w: Math.abs(c.x - selAnchor.x) + 1, h: Math.abs(c.y - selAnchor.y) + 1 };
+    } else if (dragMode === 'move') {
+      const dx = c.x - moveStart.x, dy = c.y - moveStart.y;
+      if (!floating) {
+        if (!dx && !dy) return;
+        pushHistory();
+        liftSelection();
+      }
+      selection.x = Math.max(0, Math.min(bitmap[0].length - selection.w, moveOrigin.x + dx));
+      selection.y = Math.max(0, Math.min(bitmap.length - selection.h, moveOrigin.y + dy));
+    }
+    render();
+    return;
+  }
   const cell = posToCell(e);
   if (!cell) return;
-  if (tool !== 'fill') paintAt(cell.y, cell.x, tool === 'paint' ? activeValue : 0);
+  paintAt(cell.y, cell.x, tool === 'paint' ? activeValue : 0);
+});
+
+window.addEventListener('mouseup', () => {
+  if (floating) dropFloating();
+  drawing = false;
+  dragMode = null;
+  render();
 });
 
 function paintAt(r, c, val) {
   if (bitmap[r][c] === val) return;
+  beginChange();
   bitmap[r][c] = val;
   render();
 }
@@ -181,6 +334,7 @@ function floodFill(sr, sc, newVal) {
   const rows = bitmap.length, cols = bitmap[0].length;
   const oldVal = bitmap[sr][sc];
   if (oldVal === newVal) return;
+  beginChange();
   const stack = [[sr, sc]];
   while (stack.length) {
     const [y, x] = stack.pop();
@@ -193,6 +347,8 @@ function floodFill(sr, sc, newVal) {
 }
 
 resizeBtn.addEventListener('click', () => {
+  pushHistory();
+  selection = null;
   const r = Math.max(1, Number(rowsInput.value));
   const c = Math.max(1, Number(colsInput.value));
   const newBmp = createEmpty(r, c);
@@ -208,10 +364,13 @@ resizeBtn.addEventListener('click', () => {
 
 function setTool(selected) {
   tool = selected;
-  [paintBtn, eraseBtn, fillBtn].forEach(btn => btn.classList.add('secondary'));
+  updateStatus();
+  if (selected !== 'select') { selection = null; render(); }
+  [paintBtn, eraseBtn, fillBtn, selectBtn].forEach(btn => btn.classList.add('secondary'));
   if (selected === 'paint') paintBtn.classList.remove('secondary');
   if (selected === 'erase') eraseBtn.classList.remove('secondary');
   if (selected === 'fill') fillBtn.classList.remove('secondary');
+  if (selected === 'select') selectBtn.classList.remove('secondary');
 }
 
 paintBtn.addEventListener('click', () => setTool('paint'));
@@ -219,11 +378,14 @@ eraseBtn.addEventListener('click', () => setTool('erase'));
 fillBtn.addEventListener('click', () => setTool('fill'));
 
 clearBtn.addEventListener('click', () => {
+  pushHistory();
+  selection = null;
   bitmap = createEmpty(bitmap.length, bitmap[0].length);
   render();
 });
 
 invertBtn.addEventListener('click', () => {
+  pushHistory();
   function hexToRgb(hex) {
     let c = hex.replace('#', '');
     if (c.length === 3) c = c.split('').map(ch => ch + ch).join('');
@@ -288,8 +450,8 @@ exportBtn.addEventListener('click', () => {
 copyBtn.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(exportArea.value);
-    copyBtn.textContent = 'Copied!';
-    setTimeout(() => copyBtn.textContent = 'Copy to clipboard', 900);
+    copyBtn.querySelector('.lbl').textContent = 'Copied!';
+    setTimeout(() => copyBtn.querySelector('.lbl').textContent = 'Copy', 900);
   } catch (e) {
     alert('Clipboard failed');
   }
@@ -328,3 +490,53 @@ downloadBtn.addEventListener('click', () => {
 setBitmapFrom(initialBitmap);
 renderPalette();
 exportArea.value = '';
+
+selectBtn.addEventListener('click', () => setTool('select'));
+undoBtn.addEventListener('click', undo);
+redoBtn.addEventListener('click', redo);
+
+document.addEventListener('keydown', e => {
+  if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName)) return;
+  const mod = e.ctrlKey || e.metaKey;
+  const k = e.key.toLowerCase();
+  if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
+  else if (mod && k === 'y') { e.preventDefault(); redo(); }
+  else if (k === 'escape') { selection = null; render(); }
+  else if ((k === 'delete' || k === 'backspace') && selection && !drawing) {
+    e.preventDefault();
+    pushHistory();
+    for (let j = 0; j < selection.h; j++)
+      for (let i = 0; i < selection.w; i++) bitmap[selection.y + j][selection.x + i] = 0;
+    render();
+  }
+});
+
+updateHistoryButtons();
+
+// --- Editor chrome: status bar, shortcuts, zoom, open ---
+function updateStatus() {
+  const t = document.getElementById('statusTool');
+  const z = document.getElementById('statusSize');
+  if (t) t.textContent = tool[0].toUpperCase() + tool.slice(1);
+  if (z && bitmap.length) z.textContent = bitmap[0].length + '×' + bitmap.length;
+}
+canvas.addEventListener('mousemove', e => {
+  const c = cellClamped(e);
+  document.getElementById('statusPos').textContent = c.x + ', ' + c.y;
+});
+canvas.addEventListener('mouseleave', () => {
+  document.getElementById('statusPos').textContent = '–';
+});
+pxSizeInput.addEventListener('change', () => {
+  pxSizeInput.value = Math.max(4, Math.min(64, Number(pxSizeInput.value) || 18));
+  updateCanvasSize();
+  render();
+});
+document.getElementById('openBtn').addEventListener('click', () => jsonFileInput.click());
+document.addEventListener('keydown', e => {
+  if (/^(TEXTAREA|INPUT)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey) return;
+  const map = { b: 'paint', e: 'erase', g: 'fill', m: 'select' };
+  const t = map[e.key.toLowerCase()];
+  if (t) setTool(t);
+});
+updateStatus();
