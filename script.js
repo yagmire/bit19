@@ -140,6 +140,7 @@ function updateCanvasSize() {
 function render() {
   drawBase();
   drawOverlay();
+  scheduleSave();
 }
 
 function drawOverlay() {
@@ -321,12 +322,15 @@ jsonFileInput.addEventListener('change', async (ev) => {
       throw new Error('Invalid JSON: must be an array or object with a "bitmap" array');
     }
 
-    setBitmapFrom(bitmapData);
-    render();
+    if (!bitmapData.length || !bitmapData.every(r => Array.isArray(r) && r.length === bitmapData[0].length && r.length)) {
+      throw new Error('Bitmap must be a non-empty rectangular 2D array');
+    }
+    createProject(file.name.replace(/\.json$/i, '') || 'Imported', bitmapData);
     exportArea.value = '';
   } catch (err) {
     alert(`❌ Failed to load bitmap: ${err.message}`);
   }
+  jsonFileInput.value = '';
 });
 
 
@@ -480,14 +484,13 @@ downloadBtn.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'bitmap.json';
+  a.download = ((projects[currentId]?.name || 'bitmap').replace(/[^\w\- ]+/g, '_')) + '.json';
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
 });
 
-setBitmapFrom(initialBitmap);
 renderPalette();
 exportArea.value = '';
 
@@ -562,3 +565,281 @@ stage.addEventListener('wheel', e => {
   stage.scrollLeft += r2.left + fx * next - e.clientX;
   stage.scrollTop += r2.top + fy * next - e.clientY;
 }, { passive: false });
+
+
+// --- Projects & local storage (autosave) ---
+// Layout in localStorage:
+//   bit19:p:<id>  one key per project (so tabs editing different projects never clobber each other)
+//   bit19:h:<id>  that project's undo/redo history (survives reloads)
+//   bit19:current id of the last-open project
+const projectSelect = document.getElementById('projectSelect');
+const P_PREFIX = 'bit19:p:', H_PREFIX = 'bit19:h:', CUR_KEY = 'bit19:current', OLD_KEY = 'bit19:projects';
+let projects = {};          // id -> { id, name, bitmap, zoom, created, updated }
+let currentId = null;
+let saveTimer = null;
+let lastHist = '';
+let warnedFailure = false;
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }
+function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+
+function validProject(p) {
+  return p && p.id && Array.isArray(p.bitmap) && p.bitmap.length && Array.isArray(p.bitmap[0]);
+}
+function setSaveStatus(t, bad) {
+  const el = document.getElementById('statusSave');
+  el.textContent = t;
+  el.style.color = bad ? '#ff6b6b' : '';
+}
+function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function migrateOld() {             // from the earlier single-key layout
+  const raw = lsGet(OLD_KEY);
+  if (!raw) return;
+  try {
+    let ok = true;
+    for (const p of Object.values(JSON.parse(raw))) if (validProject(p)) ok = lsSet(P_PREFIX + p.id, JSON.stringify(p)) && ok;
+    if (ok) lsDel(OLD_KEY);
+  } catch (e) {}
+}
+
+function loadAll() {
+  const list = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k || !k.startsWith(P_PREFIX)) continue;
+      try { const p = JSON.parse(localStorage.getItem(k)); if (validProject(p)) list.push(p); } catch (e) {}
+    }
+  } catch (e) {}
+  list.sort((a, b) => (a.created || a.updated || 0) - (b.created || b.updated || 0));
+  projects = {};
+  for (const p of list) projects[p.id] = p;
+}
+
+function bitmapForSave() {          // include pixels currently being dragged
+  const copy = snapshot();
+  if (floating && selection) {
+    for (let j = 0; j < floating.length; j++)
+      for (let i = 0; i < floating[0].length; i++) copy[selection.y + j][selection.x + i] = floating[j][i];
+  }
+  return copy;
+}
+
+function saveHistory() {
+  const cells = bitmap.length * bitmap[0].length;
+  const cap = Math.min(30, Math.floor(200000 / cells));   // keep very large canvases from filling storage
+  const str = JSON.stringify({
+    undo: cap > 0 ? undoStack.slice(-cap) : [],
+    redo: cap > 0 ? redoStack.slice(-cap) : []
+  });
+  if (str !== lastHist && lsSet(H_PREFIX + currentId, str)) lastHist = str;
+}
+
+function saveNow() {
+  clearTimeout(saveTimer);
+  const p = projects[currentId];
+  if (!p || !bitmap.length) return true;
+  const bmp = bitmapForSave();
+  const zoom = Number(pxSizeInput.value);
+  let ok = true;
+  if (JSON.stringify(bmp) !== JSON.stringify(p.bitmap) || zoom !== p.zoom) {
+    const next = { ...p, bitmap: bmp, zoom, updated: Date.now() };
+    ok = lsSet(P_PREFIX + p.id, JSON.stringify(next));
+    if (ok) projects[p.id] = next;          // only trust memory copy once it is on disk, so failures retry
+  }
+  if (ok) saveHistory();
+  if (ok) {
+    warnedFailure = false;
+    setSaveStatus('Saved ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+  } else {
+    setSaveStatus('FAILED – use Backup all', true);
+    if (!warnedFailure) {
+      warnedFailure = true;
+      alert('Autosave failed (browser storage is full or blocked). Your work is NOT being saved.\n' +
+            'Use "Backup all" or Save to download a copy, or delete unused projects.');
+    }
+  }
+  return ok;
+}
+
+function scheduleSave() {
+  if (!currentId || !projects[currentId]) return;
+  setSaveStatus('Saving…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 400);
+}
+
+function renderProjectList() {
+  projectSelect.innerHTML = Object.values(projects)
+    .map(p => `<option value="${p.id}">${p.name.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</option>`)
+    .join('');
+  projectSelect.value = currentId;
+  document.getElementById('statusProject').textContent = projects[currentId]?.name ?? '–';
+}
+
+function loadProject(id) {
+  const p = projects[id];
+  if (!p) return;
+  currentId = id;
+  selection = null; floating = null; drawing = false; dragMode = null;
+  bitmap = p.bitmap.map(r => r.slice());
+  rowsInput.value = bitmap.length;
+  colsInput.value = bitmap[0].length;
+  pxSizeInput.value = p.zoom || 18;
+
+  undoStack.length = 0; redoStack.length = 0;
+  const raw = lsGet(H_PREFIX + id);
+  lastHist = raw || '';
+  try {
+    const h = JSON.parse(raw || 'null');
+    const ok = s => Array.isArray(s) && s.length && s.every(r => Array.isArray(r));
+    if (h) {
+      undoStack.push(...(h.undo || []).filter(ok));
+      redoStack.push(...(h.redo || []).filter(ok));
+    }
+  } catch (e) {}
+  updateHistoryButtons();
+
+  updateCanvasSize();
+  render();
+  renderProjectList();
+  lsSet(CUR_KEY, id);
+  setSaveStatus('Saved');
+}
+
+function createProject(name, bmp, zoom) {
+  if (currentId) saveNow();
+  const id = newId();
+  const now = Date.now();
+  projects[id] = { id, name, bitmap: bmp.map(r => r.slice()), zoom: zoom || 18, created: now, updated: now };
+  lsSet(P_PREFIX + id, JSON.stringify(projects[id]));
+  loadProject(id);
+}
+
+function removeProject(id) {
+  lsDel(P_PREFIX + id); lsDel(H_PREFIX + id);
+  delete projects[id];
+}
+function openMostRecent() {
+  const rest = Object.values(projects).sort((a, b) => b.updated - a.updated);
+  if (rest.length) loadProject(rest[0].id);
+  else { currentId = null; createProject('Untitled', initialBitmap); }
+}
+
+projectSelect.addEventListener('change', () => {
+  saveNow();
+  loadProject(projectSelect.value);
+});
+
+document.getElementById('newProjBtn').addEventListener('click', () => {
+  const name = prompt('New project name:', 'Untitled');
+  if (name === null) return;
+  const r = Math.max(1, Number(rowsInput.value)), c = Math.max(1, Number(colsInput.value));
+  createProject(name.trim() || 'Untitled', createEmpty(r, c), Number(pxSizeInput.value));
+});
+
+document.getElementById('renameProjBtn').addEventListener('click', () => {
+  saveNow();
+  const p = projects[currentId];
+  const name = prompt('Rename project:', p.name);
+  if (name === null || !name.trim()) return;
+  const next = { ...p, name: name.trim(), updated: Date.now() };
+  if (lsSet(P_PREFIX + p.id, JSON.stringify(next))) projects[p.id] = next;
+  renderProjectList();
+});
+
+document.getElementById('dupProjBtn').addEventListener('click', () => {
+  saveNow();
+  const p = projects[currentId];
+  createProject(p.name + ' copy', p.bitmap, p.zoom);
+});
+
+document.getElementById('delProjBtn').addEventListener('click', () => {
+  const p = projects[currentId];
+  if (!confirm(`Delete project "${p.name}"? This can't be undone.\n(Tip: use "Backup all" first if unsure.)`)) return;
+  clearTimeout(saveTimer);
+  removeProject(currentId);
+  openMostRecent();
+});
+
+// --- Backup / restore everything ---
+const backupFile = document.getElementById('backupFile');
+document.getElementById('backupBtn').addEventListener('click', () => {
+  saveNow();
+  const data = { app: 'bit19', version: 1, exported: new Date().toISOString(), projects: Object.values(projects) };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'bit19-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+});
+document.getElementById('restoreBtn').addEventListener('click', () => backupFile.click());
+backupFile.addEventListener('change', async ev => {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const list = (Array.isArray(data.projects) ? data.projects : []).filter(p => p && Array.isArray(p.bitmap) && p.bitmap.length && Array.isArray(p.bitmap[0]));
+    if (!list.length) throw new Error('No projects found in this file');
+    saveNow();
+    let firstId = null;
+    for (const p of list) {                 // always added as new projects: nothing existing is overwritten
+      const id = newId(), now = Date.now();
+      projects[id] = { id, name: String(p.name || 'Restored'), bitmap: p.bitmap, zoom: p.zoom || 18, created: now, updated: now };
+      lsSet(P_PREFIX + id, JSON.stringify(projects[id]));
+      firstId = firstId || id;
+    }
+    loadProject(firstId);
+    alert(`Restored ${list.length} project${list.length > 1 ? 's' : ''}.`);
+  } catch (err) {
+    alert('Could not restore backup: ' + err.message);
+  }
+  backupFile.value = '';
+});
+
+// --- Save triggers ---
+window.addEventListener('mouseup', () => saveNow());   // registered after the drop/render handler, so it runs once a stroke is finished
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveNow(); }
+});
+window.addEventListener('beforeunload', saveNow);
+window.addEventListener('pagehide', saveNow);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveNow(); });
+setInterval(() => { if (currentId) saveNow(); }, 15000);   // safety net
+
+// --- Keep multiple tabs in sync ---
+window.addEventListener('storage', e => {
+  if (!e.key || !e.key.startsWith(P_PREFIX)) return;
+  const id = e.key.slice(P_PREFIX.length);
+  if (e.newValue === null) {
+    delete projects[id];
+    if (id === currentId) { clearTimeout(saveTimer); openMostRecent(); return; }
+  } else {
+    try {
+      const p = JSON.parse(e.newValue);
+      if (!validProject(p)) return;
+      projects[id] = p;
+      if (id === currentId && !drawing) {
+        bitmap = p.bitmap.map(r => r.slice());
+        selection = null; floating = null;
+        rowsInput.value = bitmap.length; colsInput.value = bitmap[0].length;
+        updateCanvasSize(); render();
+      }
+    } catch (err) { return; }
+  }
+  renderProjectList();
+});
+
+function initProjects() {
+  try { Promise.resolve(navigator.storage?.persist?.()).catch(() => {}); } catch (e) {}  // ask browser not to evict our data
+  migrateOld();
+  loadAll();
+  const saved = lsGet(CUR_KEY);
+  if (projects[saved]) loadProject(saved);
+  else openMostRecent();
+}
+initProjects();

@@ -53,6 +53,21 @@
 
     <aside class="side">
       <section class="card">
+        <h3>Projects</h3>
+        <select id="projectSelect" title="Switch project"></select>
+        <div class="row">
+          <button id="newProjBtn" class="small secondary">New</button>
+          <button id="renameProjBtn" class="small secondary">Rename</button>
+          <button id="dupProjBtn" class="small secondary">Duplicate</button>
+          <button id="delProjBtn" class="small secondary">Delete</button>
+        </div>
+        <div class="row">
+          <button id="backupBtn" class="small secondary" title="Download every project as one file">Backup all</button>
+          <button id="restoreBtn" class="small secondary" title="Restore projects from a backup file">Restore backup</button>
+        </div>
+        <input id="backupFile" type="file" accept=".json" hidden>
+      </section>
+      <section class="card">
         <h3>Palette</h3>
         <div id="paletteEditor" class="palette"></div>
       </section>
@@ -85,6 +100,8 @@
     <span>Tool: <b id="statusTool">Paint</b></span>
     <span>Size: <b id="statusSize">19×19</b></span>
     <span>Cell: <b id="statusPos">–</b></span>
+    <span>Project: <b id="statusProject">–</b></span>
+    <span>Autosave: <b id="statusSave">–</b></span>
   </footer>
 </div>
 <script src="script.js"></script>
