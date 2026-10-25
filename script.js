@@ -540,3 +540,25 @@ document.addEventListener('keydown', e => {
   if (t) setTool(t);
 });
 updateStatus();
+
+// --- Scroll wheel zoom (keeps the cell under the cursor in place) ---
+const stage = document.querySelector('.stage');
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const old = Number(pxSizeInput.value);
+  const step = Math.max(1, Math.round(old * 0.1));
+  const next = Math.max(4, Math.min(64, old + (e.deltaY < 0 ? step : -step)));
+  if (next === old) return;
+
+  const rect = canvas.getBoundingClientRect();
+  const fx = (e.clientX - rect.left) / old;   // cursor position in cell units
+  const fy = (e.clientY - rect.top) / old;
+
+  pxSizeInput.value = next;
+  updateCanvasSize();
+  render();
+
+  const r2 = canvas.getBoundingClientRect();
+  stage.scrollLeft += r2.left + fx * next - e.clientX;
+  stage.scrollTop += r2.top + fy * next - e.clientY;
+}, { passive: false });
